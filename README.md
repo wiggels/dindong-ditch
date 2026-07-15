@@ -15,7 +15,7 @@ Windows it patches `%APPDATA%\Zoom\bin`.
 macOS:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/wiggels/dindong-ditch/main/install.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/wiggels/dingdong-ditch/main/install.sh | sudo bash
 ```
 
 The installer drops the right binary for your CPU into `/usr/local/bin`, adds a
@@ -25,7 +25,7 @@ only), and adds a shell alias so a bare `dingdong-ditch` just works.
 Windows (PowerShell):
 
 ```powershell
-irm https://raw.githubusercontent.com/wiggels/dindong-ditch/main/install.ps1 | iex
+irm https://raw.githubusercontent.com/wiggels/dingdong-ditch/main/install.ps1 | iex
 ```
 
 Installs to `%LOCALAPPDATA%\Programs\dingdong-ditch` and adds it to your user

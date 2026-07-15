@@ -1,6 +1,6 @@
 # dingdong-ditch installer for Windows
 #
-#   irm https://raw.githubusercontent.com/wiggels/dindong-ditch/main/install.ps1 | iex
+#   irm https://raw.githubusercontent.com/wiggels/dingdong-ditch/main/install.ps1 | iex
 #
 # What it does:
 #   1. Downloads the latest release binary and installs it to
@@ -15,7 +15,7 @@
 
 $ErrorActionPreference = "Stop"
 
-$repo = if ($env:DINGDONG_REPO) { $env:DINGDONG_REPO } else { "wiggels/dindong-ditch" }
+$repo = if ($env:DINGDONG_REPO) { $env:DINGDONG_REPO } else { "wiggels/dingdong-ditch" }
 $target = "x86_64-pc-windows-msvc"  # ARM PCs run this fine via emulation
 $installDir = Join-Path $env:LOCALAPPDATA "Programs\dingdong-ditch"
 

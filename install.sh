@@ -2,7 +2,7 @@
 #
 # dingdong-ditch installer
 #
-#   curl -fsSL https://raw.githubusercontent.com/wiggels/dindong-ditch/main/install.sh | sudo bash
+#   curl -fsSL https://raw.githubusercontent.com/wiggels/dingdong-ditch/main/install.sh | sudo bash
 #
 # What it does:
 #   1. Downloads the latest release binary for your CPU (Intel or Apple Silicon)
@@ -17,7 +17,7 @@
 
 set -euo pipefail
 
-REPO="${DINGDONG_REPO:-wiggels/dindong-ditch}"
+REPO="${DINGDONG_REPO:-wiggels/dingdong-ditch}"
 INSTALL_DIR="/usr/local/bin"
 BIN="dingdong-ditch"
 SUDOERS_FILE="/etc/sudoers.d/dingdong-ditch"
