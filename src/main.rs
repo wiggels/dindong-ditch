@@ -8,7 +8,6 @@ use clap::Parser;
 use silk_rs::{decode_silk, encode_silk};
 
 const TARGETS: &[&str] = &["dingdong.pcm", "dingdong1.pcm"];
-const ZOOM_RESOURCES: &str = "zoom.us.app/Contents/Resources";
 // Zoom's .pcm chimes are SILK v3 streams ("#!SILK_V3\n" magic), not raw PCM.
 const SILK_MAGIC: &[u8] = b"#!SILK_V3";
 const SAMPLE_RATE: i32 = 24000;
@@ -20,26 +19,37 @@ const FRAME_SAMPLES: usize = (SAMPLE_RATE as usize / 1000) * 40; // 40 ms encode
 /// Zoom plays a "ding dong" doorbell (dingdong.pcm / dingdong1.pcm) when
 /// someone enters the waiting room or joins a meeting. This tool overwrites
 /// those files with silence, a fart, or the classic AIM buddy-in sound.
-/// Both system-wide (/Applications) and per-user (~/Applications) Zoom
-/// installs are detected and updated; use --dir to target something else.
+///
+/// macOS: system-wide (/Applications) and per-user (~/Applications) installs
+/// are detected and updated. The files are root-owned, so apply/restore need
+/// sudo, and macOS may also require granting your terminal "App Management"
+/// in System Settings → Privacy & Security.
+///
+/// Windows: Zoom lives in %APPDATA%\Zoom\bin, which is user-writable — no
+/// elevation needed.
 ///
 /// The originals are backed up next to the files (*.pcm.bak) the first time
 /// you run it, so --restore can always put the doorbell back. Zoom's sound
 /// files are SILK v3 streams despite the .pcm extension; replacements are
-/// encoded with the real SILK codec so Zoom plays them natively.
-///
-/// Zoom's files are owned by root, so apply/restore need sudo. Zoom app
+/// encoded with the real SILK codec so Zoom plays them natively. Zoom app
 /// updates reinstall the original sounds — just run the tool again.
 #[derive(Parser)]
 #[command(name = "dingdong-ditch", version, about, verbatim_doc_comment)]
-#[command(after_help = "\
+#[command(after_help = if cfg!(windows) { "\
+EXAMPLES:
+  dingdong-ditch                         silence the doorbell
+  dingdong-ditch --fart                  make it fart
+  dingdong-ditch --aim                   party like it's 1999
+  dingdong-ditch --restore               bring back the dingdong
+  dingdong-ditch --fart --preview f.wav  listen before you commit
+" } else { "\
 EXAMPLES:
   sudo dingdong-ditch                    silence the doorbell
   sudo dingdong-ditch --fart             make it fart
   sudo dingdong-ditch --aim              party like it's 1999
   sudo dingdong-ditch --restore          bring back the dingdong
   dingdong-ditch --fart --preview f.wav  listen before you commit (no sudo)
-")]
+" })]
 struct Cli {
     /// Replace the chime with a fart instead of silence
     #[arg(long, conflicts_with_all = ["aim", "restore"])]
@@ -59,8 +69,7 @@ struct Cli {
     #[arg(long, value_name = "OUT_WAV", conflicts_with = "restore")]
     preview: Option<PathBuf>,
 
-    /// Directory holding Zoom's sound files (skips auto-detection of
-    /// /Applications and ~/Applications installs)
+    /// Directory holding Zoom's sound files (skips auto-detection)
     #[arg(long, value_name = "DIR", env = "DINGDONG_DIR")]
     dir: Option<PathBuf>,
 }
@@ -80,7 +89,11 @@ fn main() {
     } else {
         let dirs = zoom_dirs(cli.dir);
         if dirs.is_empty() {
-            eprintln!("error: Zoom not found in /Applications or ~/Applications");
+            if cfg!(windows) {
+                eprintln!("error: Zoom not found in %APPDATA%\\Zoom\\bin");
+            } else {
+                eprintln!("error: Zoom not found in /Applications or ~/Applications");
+            }
             eprintln!("(use --dir if it lives somewhere else)");
             exit(1);
         }
@@ -105,20 +118,7 @@ fn main() {
 
     if let Err(e) = result {
         if e.kind() == ErrorKind::PermissionDenied {
-            if is_root() {
-                eprintln!("error: permission denied even though you're root.");
-                eprintln!();
-                eprintln!("macOS App Management is blocking changes inside Zoom.app. Grant your");
-                eprintln!("terminal app the permission, then re-run:");
-                eprintln!();
-                eprintln!("  System Settings → Privacy & Security → App Management → enable your terminal");
-                eprintln!();
-                eprintln!("shortcut to that pane:");
-                eprintln!("  open \"x-apple.systempreferences:com.apple.preference.security?Privacy_AppBundles\"");
-            } else {
-                eprintln!("error: permission denied — Zoom's files are owned by root.");
-                eprintln!("try: sudo dingdong-ditch{}", sound.flag());
-            }
+            permission_help(sound);
         } else {
             eprintln!("error: {e}");
         }
@@ -126,16 +126,38 @@ fn main() {
     }
 }
 
-fn is_root() -> bool {
-    unsafe extern "C" {
-        fn geteuid() -> u32;
+#[cfg(unix)]
+fn permission_help(sound: Sound) {
+    fn is_root() -> bool {
+        unsafe extern "C" {
+            fn geteuid() -> u32;
+        }
+        unsafe { geteuid() == 0 }
     }
-    unsafe { geteuid() == 0 }
+    if is_root() {
+        eprintln!("error: permission denied even though you're root.");
+        eprintln!();
+        eprintln!("macOS App Management is blocking changes inside Zoom.app. Grant your");
+        eprintln!("terminal app the permission, then re-run:");
+        eprintln!();
+        eprintln!("  System Settings → Privacy & Security → App Management → enable your terminal");
+        eprintln!();
+        eprintln!("shortcut to that pane:");
+        eprintln!("  open \"x-apple.systempreferences:com.apple.preference.security?Privacy_AppBundles\"");
+    } else {
+        eprintln!("error: permission denied — Zoom's files are owned by root.");
+        eprintln!("try: sudo dingdong-ditch{}", sound.flag());
+    }
 }
 
-/// Every Zoom Resources directory to patch: an explicit --dir wins outright;
-/// otherwise look in /Applications plus the per-user ~/Applications — both the
-/// current HOME and SUDO_USER's home, since sudo may point HOME at root's.
+#[cfg(windows)]
+fn permission_help(_sound: Sound) {
+    eprintln!("error: permission denied — is Zoom running? Close it and try again.");
+    eprintln!("(if Zoom was installed for all users, re-run from an elevated prompt)");
+}
+
+/// Every Zoom sound directory to patch: an explicit --dir wins outright;
+/// otherwise auto-detect per platform.
 fn zoom_dirs(explicit: Option<PathBuf>) -> Vec<PathBuf> {
     if let Some(dir) = explicit {
         if !dir.is_dir() {
@@ -144,6 +166,19 @@ fn zoom_dirs(explicit: Option<PathBuf>) -> Vec<PathBuf> {
         }
         return vec![dir];
     }
+    let mut dirs: Vec<PathBuf> = candidate_dirs()
+        .into_iter()
+        .filter(|dir| dir.is_dir())
+        .collect();
+    dirs.sort();
+    dirs.dedup();
+    dirs
+}
+
+/// macOS: /Applications plus the per-user ~/Applications — both the current
+/// HOME and SUDO_USER's home, since sudo may point HOME at root's.
+#[cfg(target_os = "macos")]
+fn candidate_dirs() -> Vec<PathBuf> {
     let mut roots = vec![PathBuf::from("/Applications")];
     if let Some(user) = env::var_os("SUDO_USER") {
         roots.push(Path::new("/Users").join(user).join("Applications"));
@@ -151,14 +186,24 @@ fn zoom_dirs(explicit: Option<PathBuf>) -> Vec<PathBuf> {
     if let Some(home) = env::var_os("HOME") {
         roots.push(PathBuf::from(home).join("Applications"));
     }
-    let mut dirs: Vec<PathBuf> = roots
+    roots
         .into_iter()
-        .map(|root| root.join(ZOOM_RESOURCES))
-        .filter(|dir| dir.is_dir())
-        .collect();
-    dirs.sort();
-    dirs.dedup();
-    dirs
+        .map(|root| root.join("zoom.us.app/Contents/Resources"))
+        .collect()
+}
+
+/// Windows: Zoom installs per-user under %APPDATA%\Zoom\bin.
+#[cfg(windows)]
+fn candidate_dirs() -> Vec<PathBuf> {
+    env::var_os("APPDATA")
+        .map(|appdata| PathBuf::from(appdata).join("Zoom").join("bin"))
+        .into_iter()
+        .collect()
+}
+
+#[cfg(not(any(target_os = "macos", windows)))]
+fn candidate_dirs() -> Vec<PathBuf> {
+    Vec::new()
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -177,6 +222,7 @@ impl Sound {
         }
     }
 
+    #[cfg(unix)]
     fn flag(self) -> &'static str {
         match self {
             Sound::Silence => "",
@@ -255,7 +301,8 @@ fn write_preview(path: &Path, sound: Sound) -> std::io::Result<()> {
     let pcm = decode_silk(stripped, SAMPLE_RATE)
         .map_err(|e| std::io::Error::other(format!("SILK decode failed: {e:?}")))?;
     write_wav(path, &pcm)?;
-    println!("wrote {} — try: afplay {}", path.display(), path.display());
+    let player = if cfg!(windows) { "start" } else { "afplay" };
+    println!("wrote {} — try: {player} {}", path.display(), path.display());
     Ok(())
 }
 

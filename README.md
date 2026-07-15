@@ -1,15 +1,18 @@
 # dingdong-ditch 🔕🚪
 
-Silence Zoom's "ding dong" doorbell chime on macOS — or replace it with a fart,
-or the classic AIM buddy-in sound.
+Silence Zoom's "ding dong" doorbell chime on macOS and Windows — or replace it
+with a fart, or the classic AIM buddy-in sound.
 
 Zoom plays `dingdong.pcm` / `dingdong1.pcm` (SILK v3 streams, despite the
 extension) when someone enters the waiting room or joins a meeting. This tool
 backs those files up and overwrites them with a replacement encoded through the
-real SILK codec, so Zoom plays it natively. Both system-wide (`/Applications`)
-and per-user (`~/Applications`) Zoom installs are detected and updated.
+real SILK codec, so Zoom plays it natively. On macOS both system-wide
+(`/Applications`) and per-user (`~/Applications`) installs are detected; on
+Windows it patches `%APPDATA%\Zoom\bin`.
 
 ## Install
+
+macOS:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/wiggels/dindong-ditch/main/install.sh | sudo bash
@@ -18,6 +21,15 @@ curl -fsSL https://raw.githubusercontent.com/wiggels/dindong-ditch/main/install.
 The installer drops the right binary for your CPU into `/usr/local/bin`, adds a
 sudoers rule so the tool never asks for a password (scoped to this binary
 only), and adds a shell alias so a bare `dingdong-ditch` just works.
+
+Windows (PowerShell):
+
+```powershell
+irm https://raw.githubusercontent.com/wiggels/dindong-ditch/main/install.ps1 | iex
+```
+
+Installs to `%LOCALAPPDATA%\Programs\dingdong-ditch` and adds it to your user
+PATH. No admin needed — Zoom's sounds live in your own `%APPDATA%`.
 
 ## Use
 
@@ -46,12 +58,23 @@ open "x-apple.systempreferences:com.apple.preference.security?Privacy_AppBundles
 
 ## Uninstall
 
+macOS:
+
 ```sh
 dingdong-ditch --restore
 sudo rm /usr/local/bin/dingdong-ditch /etc/sudoers.d/dingdong-ditch
 ```
 
 Then remove the `dingdong-ditch` block from your shell profile.
+
+Windows (PowerShell):
+
+```powershell
+dingdong-ditch --restore
+Remove-Item -Recurse "$env:LOCALAPPDATA\Programs\dingdong-ditch"
+```
+
+Then remove that directory from your user PATH.
 
 ## Development
 
@@ -62,5 +85,5 @@ cargo build --release
 
 Every push to `main` cuts a GitHub release: the version is bumped
 automatically from commit messages (conventional commits; defaults to a patch
-bump), binaries are built for Apple Silicon and Intel, and tarballs plus
-checksums are attached to the release.
+bump), binaries are built for Apple Silicon, Intel mac, and Windows x64, and
+archives plus checksums are attached to the release.
