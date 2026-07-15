@@ -1,3 +1,4 @@
+use std::env;
 use std::fs;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
@@ -7,7 +8,7 @@ use clap::Parser;
 use silk_rs::{decode_silk, encode_silk};
 
 const TARGETS: &[&str] = &["dingdong.pcm", "dingdong1.pcm"];
-const DEFAULT_DIR: &str = "/Applications/zoom.us.app/Contents/Resources";
+const ZOOM_RESOURCES: &str = "zoom.us.app/Contents/Resources";
 // Zoom's .pcm chimes are SILK v3 streams ("#!SILK_V3\n" magic), not raw PCM.
 const SILK_MAGIC: &[u8] = b"#!SILK_V3";
 const SAMPLE_RATE: i32 = 24000;
@@ -19,6 +20,8 @@ const FRAME_SAMPLES: usize = (SAMPLE_RATE as usize / 1000) * 40; // 40 ms encode
 /// Zoom plays a "ding dong" doorbell (dingdong.pcm / dingdong1.pcm) when
 /// someone enters the waiting room or joins a meeting. This tool overwrites
 /// those files with silence, a fart, or the classic AIM buddy-in sound.
+/// Both system-wide (/Applications) and per-user (~/Applications) Zoom
+/// installs are detected and updated; use --dir to target something else.
 ///
 /// The originals are backed up next to the files (*.pcm.bak) the first time
 /// you run it, so --restore can always put the doorbell back. Zoom's sound
@@ -56,9 +59,10 @@ struct Cli {
     #[arg(long, value_name = "OUT_WAV", conflicts_with = "restore")]
     preview: Option<PathBuf>,
 
-    /// Directory holding Zoom's sound files
-    #[arg(long, value_name = "DIR", env = "DINGDONG_DIR", default_value = DEFAULT_DIR)]
-    dir: PathBuf,
+    /// Directory holding Zoom's sound files (skips auto-detection of
+    /// /Applications and ~/Applications installs)
+    #[arg(long, value_name = "DIR", env = "DINGDONG_DIR")]
+    dir: Option<PathBuf>,
 }
 
 fn main() {
@@ -74,15 +78,29 @@ fn main() {
     let result = if let Some(path) = &cli.preview {
         write_preview(path, sound)
     } else {
-        if !cli.dir.is_dir() {
-            eprintln!("error: {} not found — is Zoom installed?", cli.dir.display());
+        let dirs = zoom_dirs(cli.dir);
+        if dirs.is_empty() {
+            eprintln!("error: Zoom not found in /Applications or ~/Applications");
+            eprintln!("(use --dir if it lives somewhere else)");
             exit(1);
         }
-        if cli.restore {
-            restore_backups(&cli.dir)
-        } else {
-            ditch(&cli.dir, sound)
+        // patch every install independently — one blocked dir (e.g. TCC on
+        // /Applications) shouldn't stop a writable per-user install
+        let mut outcome = Ok(());
+        for dir in &dirs {
+            let result = if cli.restore {
+                restore_backups(dir)
+            } else {
+                ditch(dir, sound)
+            };
+            if let Err(e) = result {
+                eprintln!("failed in {}: {e}", dir.display());
+                if outcome.is_ok() {
+                    outcome = Err(e);
+                }
+            }
         }
+        outcome
     };
 
     if let Err(e) = result {
@@ -113,6 +131,34 @@ fn is_root() -> bool {
         fn geteuid() -> u32;
     }
     unsafe { geteuid() == 0 }
+}
+
+/// Every Zoom Resources directory to patch: an explicit --dir wins outright;
+/// otherwise look in /Applications plus the per-user ~/Applications — both the
+/// current HOME and SUDO_USER's home, since sudo may point HOME at root's.
+fn zoom_dirs(explicit: Option<PathBuf>) -> Vec<PathBuf> {
+    if let Some(dir) = explicit {
+        if !dir.is_dir() {
+            eprintln!("error: {} not found", dir.display());
+            exit(1);
+        }
+        return vec![dir];
+    }
+    let mut roots = vec![PathBuf::from("/Applications")];
+    if let Some(user) = env::var_os("SUDO_USER") {
+        roots.push(Path::new("/Users").join(user).join("Applications"));
+    }
+    if let Some(home) = env::var_os("HOME") {
+        roots.push(PathBuf::from(home).join("Applications"));
+    }
+    let mut dirs: Vec<PathBuf> = roots
+        .into_iter()
+        .map(|root| root.join(ZOOM_RESOURCES))
+        .filter(|dir| dir.is_dir())
+        .collect();
+    dirs.sort();
+    dirs.dedup();
+    dirs
 }
 
 #[derive(Clone, Copy, PartialEq)]

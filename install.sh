@@ -34,6 +34,15 @@ case "$(uname -m)" in
   *)      die "unsupported architecture: $(uname -m)" ;;
 esac
 
+# Resolve the invoking (pre-sudo) user for their shell profile and their
+# per-user ~/Applications, since $HOME points at root's home under sudo.
+user_home=""
+user_shell=""
+if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
+  user_home="$(dscl . -read "/Users/${SUDO_USER}" NFSHomeDirectory | awk '{print $2}')"
+  user_shell="$(dscl . -read "/Users/${SUDO_USER}" UserShell | awk '{print $2}')"
+fi
+
 log "Finding latest release of ${REPO}..."
 tag="$(curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" \
   | grep -m1 '"tag_name"' | cut -d'"' -f4)"
@@ -68,9 +77,7 @@ install -m 440 -o root -g wheel "${tmp}/sudoers" "$SUDOERS_FILE"
 # Add an alias to the invoking user's shell profile so a bare `dingdong-ditch`
 # runs through sudo (which the rule above makes passwordless).
 alias_line="alias ${BIN}='sudo ${INSTALL_DIR}/${BIN}'"
-if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
-  user_home="$(dscl . -read "/Users/${SUDO_USER}" NFSHomeDirectory | awk '{print $2}')"
-  user_shell="$(dscl . -read "/Users/${SUDO_USER}" UserShell | awk '{print $2}')"
+if [ -n "$user_home" ]; then
   case "$user_shell" in
     */zsh)  profile="${user_home}/.zshrc" ;;
     */bash) profile="${user_home}/.bash_profile" ;;
@@ -89,30 +96,38 @@ else
 fi
 
 # macOS gates writes inside other apps' bundles behind App Management (TCC),
-# even for root. Probe by creating a scratch file inside Zoom.app: on a fresh
-# machine this makes macOS show the permission dialog right now; if it's
-# already been denied, open the settings pane so the user can flip it on.
-zoom_res="/Applications/zoom.us.app/Contents/Resources"
-if [ -d "$zoom_res" ]; then
-  log "Checking macOS App Management permission..."
+# even for root. Probe by creating a scratch file inside each Zoom install
+# (system-wide and per-user): on a fresh machine this makes macOS show the
+# permission dialog right now; if it's already been denied, open the settings
+# pane so the user can flip it on.
+found_zoom=0
+blocked=0
+for zoom_res in "/Applications/zoom.us.app/Contents/Resources" \
+                "${user_home:+${user_home}/Applications/zoom.us.app/Contents/Resources}"; do
+  [ -n "$zoom_res" ] && [ -d "$zoom_res" ] || continue
+  found_zoom=1
+  log "Checking macOS App Management permission for ${zoom_res}..."
   probe="${zoom_res}/.dingdong-ditch-probe"
   if touch "$probe" 2>/dev/null; then
     rm -f "$probe"
     log "App Management permission is good to go."
   else
-    log "macOS is blocking changes to Zoom.app (App Management protection)."
-    log "If a permission dialog just popped up, approve it. Otherwise enable"
-    log "your terminal app in the settings pane that's opening now, then quit"
-    log "and reopen your terminal."
-    pane="x-apple.systempreferences:com.apple.preference.security?Privacy_AppBundles"
-    if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
-      sudo -u "$SUDO_USER" open "$pane" || true
-    else
-      open "$pane" || true
-    fi
+    blocked=1
   fi
-else
-  log "Zoom doesn't appear to be installed (no ${zoom_res}); skipping permission check."
+done
+if [ "$found_zoom" -eq 0 ]; then
+  log "Zoom doesn't appear to be installed; skipping permission check."
+elif [ "$blocked" -eq 1 ]; then
+  log "macOS is blocking changes to Zoom.app (App Management protection)."
+  log "If a permission dialog just popped up, approve it. Otherwise enable"
+  log "your terminal app in the settings pane that's opening now, then quit"
+  log "and reopen your terminal."
+  pane="x-apple.systempreferences:com.apple.preference.security?Privacy_AppBundles"
+  if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
+    sudo -u "$SUDO_USER" open "$pane" || true
+  else
+    open "$pane" || true
+  fi
 fi
 
 echo

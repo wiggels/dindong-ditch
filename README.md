@@ -6,7 +6,8 @@ or the classic AIM buddy-in sound.
 Zoom plays `dingdong.pcm` / `dingdong1.pcm` (SILK v3 streams, despite the
 extension) when someone enters the waiting room or joins a meeting. This tool
 backs those files up and overwrites them with a replacement encoded through the
-real SILK codec, so Zoom plays it natively.
+real SILK codec, so Zoom plays it natively. Both system-wide (`/Applications`)
+and per-user (`~/Applications`) Zoom installs are detected and updated.
 
 ## Install
 
