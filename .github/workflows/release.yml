@@ -1,0 +1,76 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Compute the next version from commit messages (conventional commits:
+      # fix/feat/BREAKING CHANGE -> patch/minor/major; defaults to patch).
+      # Dry run so nothing is tagged until the build succeeds.
+      - name: Compute next version
+        id: version
+        uses: mathieudutour/github-tag-action@v6.2
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          default_bump: patch
+          tag_prefix: v
+          dry_run: true
+
+      - name: Stamp Cargo.toml with release version
+        run: |
+          perl -pi -e 's/^version = ".*"$/version = "${{ steps.version.outputs.new_version }}"/ if !$done++' Cargo.toml
+          grep -m1 '^version' Cargo.toml
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build
+        run: |
+          cargo build --release --target aarch64-apple-darwin
+          cargo build --release --target x86_64-apple-darwin
+
+      - name: Smoke test
+        run: |
+          target/aarch64-apple-darwin/release/dingdong-ditch --version
+          target/aarch64-apple-darwin/release/dingdong-ditch --fart --preview /tmp/smoke.wav
+
+      - name: Package
+        run: |
+          mkdir dist
+          for target in aarch64-apple-darwin x86_64-apple-darwin; do
+            tar -C "target/$target/release" -czf \
+              "dist/dingdong-ditch-${{ steps.version.outputs.new_version }}-$target.tar.gz" \
+              dingdong-ditch
+          done
+          (cd dist && shasum -a 256 *.tar.gz > SHA256SUMS)
+
+      - name: Push tag
+        uses: mathieudutour/github-tag-action@v6.2
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          custom_tag: ${{ steps.version.outputs.new_version }}
+          tag_prefix: v
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.new_tag }}
+          name: ${{ steps.version.outputs.new_tag }}
+          body: ${{ steps.version.outputs.changelog }}
+          files: |
+            dist/*.tar.gz
+            dist/SHA256SUMS
