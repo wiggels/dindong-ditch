@@ -31,6 +31,18 @@ dingdong-ditch --fart --preview fart.wav   # hear it before you commit
 Zoom app updates reinstall the original sounds — just run the tool again.
 See `dingdong-ditch --help` for everything else.
 
+### "permission denied" even with sudo?
+
+macOS 13+ blocks modifying other apps' bundles (App Management protection),
+even as root. Grant your terminal app the permission and re-run:
+
+**System Settings → Privacy & Security → App Management** → enable your
+terminal (Terminal, iTerm2, etc.). Shortcut:
+
+```sh
+open "x-apple.systempreferences:com.apple.preference.security?Privacy_AppBundles"
+```
+
 ## Uninstall
 
 ```sh

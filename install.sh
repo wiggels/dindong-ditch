@@ -88,6 +88,33 @@ else
   log "  ${alias_line}"
 fi
 
+# macOS gates writes inside other apps' bundles behind App Management (TCC),
+# even for root. Probe by creating a scratch file inside Zoom.app: on a fresh
+# machine this makes macOS show the permission dialog right now; if it's
+# already been denied, open the settings pane so the user can flip it on.
+zoom_res="/Applications/zoom.us.app/Contents/Resources"
+if [ -d "$zoom_res" ]; then
+  log "Checking macOS App Management permission..."
+  probe="${zoom_res}/.dingdong-ditch-probe"
+  if touch "$probe" 2>/dev/null; then
+    rm -f "$probe"
+    log "App Management permission is good to go."
+  else
+    log "macOS is blocking changes to Zoom.app (App Management protection)."
+    log "If a permission dialog just popped up, approve it. Otherwise enable"
+    log "your terminal app in the settings pane that's opening now, then quit"
+    log "and reopen your terminal."
+    pane="x-apple.systempreferences:com.apple.preference.security?Privacy_AppBundles"
+    if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
+      sudo -u "$SUDO_USER" open "$pane" || true
+    else
+      open "$pane" || true
+    fi
+  fi
+else
+  log "Zoom doesn't appear to be installed (no ${zoom_res}); skipping permission check."
+fi
+
 echo
 log "Done! Open a new terminal (or 'source' your profile), then:"
 echo "      dingdong-ditch           # silence Zoom's doorbell"

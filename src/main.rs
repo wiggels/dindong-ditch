@@ -87,13 +87,32 @@ fn main() {
 
     if let Err(e) = result {
         if e.kind() == ErrorKind::PermissionDenied {
-            eprintln!("error: permission denied — Zoom's files are owned by root.");
-            eprintln!("try: sudo dingdong-ditch{}", sound.flag());
+            if is_root() {
+                eprintln!("error: permission denied even though you're root.");
+                eprintln!();
+                eprintln!("macOS App Management is blocking changes inside Zoom.app. Grant your");
+                eprintln!("terminal app the permission, then re-run:");
+                eprintln!();
+                eprintln!("  System Settings → Privacy & Security → App Management → enable your terminal");
+                eprintln!();
+                eprintln!("shortcut to that pane:");
+                eprintln!("  open \"x-apple.systempreferences:com.apple.preference.security?Privacy_AppBundles\"");
+            } else {
+                eprintln!("error: permission denied — Zoom's files are owned by root.");
+                eprintln!("try: sudo dingdong-ditch{}", sound.flag());
+            }
         } else {
             eprintln!("error: {e}");
         }
         exit(1);
     }
+}
+
+fn is_root() -> bool {
+    unsafe extern "C" {
+        fn geteuid() -> u32;
+    }
+    unsafe { geteuid() == 0 }
 }
 
 #[derive(Clone, Copy, PartialEq)]
