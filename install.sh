@@ -7,13 +7,14 @@
 # What it does:
 #   1. Downloads the latest release binary for your CPU (Intel or Apple Silicon)
 #      and installs it to /usr/local/bin (checksum-verified).
-#   2. Adds a sudoers rule so `sudo dingdong-ditch` never asks for a password
-#      (scoped to this one binary only).
-#   3. Adds an alias to your shell profile so plain `dingdong-ditch` just works.
+#   2. Adds an alias to your shell profile so plain `dingdong-ditch` runs the
+#      tool through sudo (you'll be prompted for your password as usual).
 #
 # Uninstall:
-#   sudo rm /usr/local/bin/dingdong-ditch /etc/sudoers.d/dingdong-ditch
+#   sudo rm /usr/local/bin/dingdong-ditch
 #   then remove the "dingdong-ditch" block from your shell profile.
+#   (Older installs also dropped /etc/sudoers.d/dingdong-ditch — this script
+#   removes it if present.)
 
 set -euo pipefail
 
@@ -69,13 +70,15 @@ tar -xzf "${tmp}/${asset}" -C "$tmp"
 mkdir -p "$INSTALL_DIR"
 install -m 755 -o root -g wheel "${tmp}/${BIN}" "${INSTALL_DIR}/${BIN}"
 
-log "Allowing passwordless sudo for ${BIN} (admins only)..."
-echo "%admin ALL=(root) NOPASSWD: ${INSTALL_DIR}/${BIN}" > "${tmp}/sudoers"
-visudo -cf "${tmp}/sudoers" >/dev/null || die "generated sudoers rule failed validation"
-install -m 440 -o root -g wheel "${tmp}/sudoers" "$SUDOERS_FILE"
+# Older versions installed a NOPASSWD sudoers rule; MDM/compliance tools flag
+# those, so clean it up on upgrade.
+if [ -f "$SUDOERS_FILE" ]; then
+  log "Removing legacy passwordless-sudo rule (${SUDOERS_FILE})..."
+  rm -f "$SUDOERS_FILE"
+fi
 
 # Add an alias to the invoking user's shell profile so a bare `dingdong-ditch`
-# runs through sudo (which the rule above makes passwordless).
+# runs through sudo (it will prompt for your password like any sudo command).
 alias_line="alias ${BIN}='sudo ${INSTALL_DIR}/${BIN}'"
 if [ -n "$user_home" ]; then
   case "$user_shell" in

@@ -18,9 +18,9 @@ macOS:
 curl -fsSL https://raw.githubusercontent.com/wiggels/dingdong-ditch/main/install.sh | sudo bash
 ```
 
-The installer drops the right binary for your CPU into `/usr/local/bin`, adds a
-sudoers rule so the tool never asks for a password (scoped to this binary
-only), and adds a shell alias so a bare `dingdong-ditch` just works.
+The installer drops the right binary for your CPU into `/usr/local/bin` and
+adds a shell alias so a bare `dingdong-ditch` runs the tool through `sudo`
+(you'll be prompted for your password as usual).
 
 Windows (PowerShell):
 
@@ -62,8 +62,10 @@ macOS:
 
 ```sh
 dingdong-ditch --restore
-sudo rm /usr/local/bin/dingdong-ditch /etc/sudoers.d/dingdong-ditch
+sudo rm /usr/local/bin/dingdong-ditch
 ```
+
+(If you installed an older version, also `sudo rm /etc/sudoers.d/dingdong-ditch`.)
 
 Then remove the `dingdong-ditch` block from your shell profile.
 
